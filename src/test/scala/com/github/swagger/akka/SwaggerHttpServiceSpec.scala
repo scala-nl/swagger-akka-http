@@ -30,7 +30,7 @@ class SwaggerHttpServiceSpec
     override val apiClasses: Set[Class[_]] = Set(classOf[PetHttpService], classOf[UserHttpService])
     override val basePath = "api"
     override val apiDocsPath = "api-doc"
-    override val scheme = Scheme.HTTPS
+    override val schemes = List(Scheme.HTTPS)
     override val host = "some.domain.com:12345"
     override val info = Info(description = "desc1",
                    version = "v1.0",
@@ -217,17 +217,19 @@ class SwaggerHttpServiceSpec
       }
     }
 
-    "asScala" should {
-      "handle null" in {
-        swaggerService.asScala[String, Model](null) shouldEqual Map.empty[String, Model]
-        swaggerService.asScala[String, String](null) shouldEqual Map.empty[String, String]
+    "defining multiple schemes" should {
+      val swaggerService = new SwaggerHttpService {
+        override val apiClasses: Set[Class[_]] = Set(classOf[UserHttpService])
+        override val schemes: List[Scheme] = List(Scheme.HTTPS, Scheme.HTTP)
       }
-      "handle simple java map" in {
-        val definitions = swaggerService.filteredSwagger.getDefinitions
-        definitions should not be null
-        definitions should have size 4
-        val smap = swaggerService.asScala[String, Model](definitions)
-        smap should contain theSameElementsAs definitions.asScala
+      "return all schemes" in {
+        Get(s"/${swaggerService.apiDocsPath}/swagger.json") ~> swaggerService.routes ~> check {
+          handled shouldBe true
+          contentType shouldBe ContentTypes.`application/json`
+          val str = responseAs[String]
+          val response = parse(str)
+          (response \ "schemes").extract[List[String]] shouldEqual List("https", "http")
+        }
       }
     }
   }

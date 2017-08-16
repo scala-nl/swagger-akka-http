@@ -15,6 +15,7 @@ package com.github.swagger.akka
 
 import scala.collection.JavaConverters._
 import scala.util.control.NonFatal
+import com.github.swagger.akka.model.asScala
 import com.github.swagger.akka.model.Info
 import com.github.swagger.akka.model.scala2swagger
 import akka.http.scaladsl.model.{HttpEntity, MediaTypes}
@@ -35,19 +36,18 @@ object SwaggerHttpService {
     if(path.startsWith("/")) removeInitialSlashIfNecessary(path.substring(1)) else path
   def prependSlashIfNecessary(path: String): String  = if(path.startsWith("/")) path else s"/$path"
 
-  private def apiDocsBase(path: String) = PathMatchers.separateOnSlashes(removeInitialSlashIfNecessary(path))
-  private val logger = LoggerFactory.getLogger(classOf[SwaggerHttpService])
+  private[akka] def apiDocsBase(path: String) = PathMatchers.separateOnSlashes(removeInitialSlashIfNecessary(path))
+  private[akka] val logger = LoggerFactory.getLogger(classOf[SwaggerHttpService])
 }
 
-trait SwaggerHttpService extends Directives {
-
+trait SwaggerGenerator {
   import SwaggerHttpService._
   def apiClasses: Set[Class[_]]
   def host: String = ""
   def basePath: String = "/"
   def apiDocsPath: String = "api-docs"
   def info: Info = Info()
-  def scheme: Scheme = Scheme.HTTP
+  def schemes: List[Scheme] = List(Scheme.HTTP)
   def securitySchemeDefinitions: Map[String, SecuritySchemeDefinition] = Map.empty
   def externalDocs: Option[ExternalDocs] = None
   def vendorExtensions: Map[String, Object] = Map.empty
@@ -55,7 +55,7 @@ trait SwaggerHttpService extends Directives {
 
   def swaggerConfig: Swagger = {
     val modifiedPath = prependSlashIfNecessary(basePath)
-    val swagger = new Swagger().basePath(modifiedPath).info(info).scheme(scheme)
+    val swagger = new Swagger().basePath(modifiedPath).info(info).schemes(schemes.asJava)
     if(StringUtils.isNotBlank(host)) swagger.host(host)
     swagger.setSecurityDefinitions(securitySchemeDefinitions.asJava)
     swagger.vendorExtensions(vendorExtensions.asJava)
@@ -96,12 +96,10 @@ trait SwaggerHttpService extends Directives {
     }
     swagger
   }
+}
 
-  private[akka] def asScala[K,V](jmap: java.util.Map[K,V]): Map[K,V] = Option(jmap) match {
-    case None => Map.empty[K,V]
-    case Some(jm) => jm.asScala.toMap
-  }
-
+trait SwaggerHttpService extends Directives with SwaggerGenerator {
+  import SwaggerHttpService._
   def routes: Route = {
     val base = apiDocsBase(apiDocsPath)
     path(base / "swagger.json") {
